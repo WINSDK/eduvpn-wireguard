@@ -68,7 +68,6 @@ class DBusKeyring(TokenKeyring):
             assert self.load(attributes) == secret
             self.clear(attributes)
         except (gi.repository.GLib.Error, AssertionError) as e:
-            logger.warning(f"error when checking if keyring is available: {e}")
             return False
         return True
 

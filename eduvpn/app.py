@@ -133,7 +133,7 @@ class ApplicationModelTransitions:
 
 class ApplicationModel:
     def __init__(
-        self, common: EduVPN, config, variant: ApplicationVariant, nm_manager
+        self, common: EduVPN, config, variant: ApplicationVariant
     ) -> None:
         self.common = common
         self.config = config
@@ -142,7 +142,6 @@ class ApplicationModel:
             self.keyring = InsecureFileKeyring(variant)
         self.transitions = ApplicationModelTransitions(common, variant)
         self.variant = variant
-        self.nm_manager = nm_manager
         self.common.register_class_callbacks(self)
         self.was_tcp = False
 
@@ -159,25 +158,10 @@ class ApplicationModel:
         self.transitions.current_server = current_server
 
     def get_failover_rx(self, filehandler: Optional[TextIO]) -> int:
-        rx_bytes = self.nm_manager.get_stats_bytes(filehandler)
-        if rx_bytes is None:
-            return -1
-        return rx_bytes
+        return -1
 
     def should_failover(self):
-        current_vpn_protocol = self.nm_manager.protocol
-        if current_vpn_protocol == "WireGuard":
-            logger.debug("Current protocol is WireGuard, failover should continue")
-            return True
-
-        if not self.was_tcp:
-            logger.debug(
-                "Protocol is not WireGuard and TCP was not previously triggered, failover should continue"
-            )
-            return True
-
-        logger.debug("Failover should not continue")
-        return False
+        return True
 
     def reconnect_tcp(self, callback: Callable):
         def on_reconnected():
@@ -190,49 +174,8 @@ class ApplicationModel:
         self.common.set_support_wireguard(False)
         self.reconnect(on_reconnected, prefer_tcp=True)
 
-    def start_failover(self, callback: Callable):
-        try:
-            rx_bytes_file = self.nm_manager.open_stats_file("rx_bytes")
-            if rx_bytes_file is None:
-                logger.debug(
-                    "Failed to initialize failover, failed to open rx bytes file"
-                )
-                callback(False)
-                return
-            endpoint = self.nm_manager.failover_endpoint_ip
-            if endpoint is None:
-                logger.debug("Failed to initialize failover, failed to get endpoint")
-                callback(False)
-                return
-            mtu = self.nm_manager.mtu
-            if mtu is None:
-                logger.debug("failed to get MTU for failover, setting MTU to 1000")
-                mtu = 1000
-            logger.debug(
-                f"starting failover with gateway {endpoint} and MTU {mtu} for protocol {self.nm_manager.protocol}"
-            )
-            dropped = self.common.start_failover(
-                endpoint,
-                mtu,
-                ReadRxBytes(lambda: self.get_failover_rx(rx_bytes_file)),
-            )
-
-            if dropped:
-                logger.debug("Failover exited, connection is dropped")
-                if self.is_connected():
-                    self.reconnect_tcp(callback)
-                    return
-                # Dropped but not relevant anymore
-                callback(False)
-                return
-            else:
-                logger.debug("Failover exited, connection is NOT dropped")
-                callback(False)
-                return
-        except WrappedError as e:
-            logger.debug(f"Failed to start failover, error: {e}")
-            callback(False)
-            return
+    def start_failover(self, _: Callable):
+        return
 
     def cancel_failover(self):
         try:
@@ -410,17 +353,13 @@ class ApplicationModel:
                 callback()
 
         def on_connect(_):
-            self.nm_manager.activate_connection(on_connected)
+            print("self.nm_manager.activate_connection(on_connected)")
+            exit(1)
 
-        def connect(config, config_type):
-            connection = Connection.parse(str(config), config.config_type)
-            connection.connect(
-                self.nm_manager,
-                default_gateway,
-                self.config.allow_wg_lan,
-                dns_search_domains,
-                on_connect,
-            )
+        def connect(config, _):
+            assert config.config_type == "wireguard"
+            print(str(config))
+            os._exit(0)
 
         self.common.set_connecting()
         connect(config, config_type)
@@ -454,7 +393,7 @@ class ApplicationModel:
             reconnect()
 
     def disconnect(self, callback: Optional[Callable] = None) -> None:
-        self.nm_manager.deactivate_connection(callback)
+        return None
 
     def set_profile(self, profile, connect=False):
         was_connected = self.is_connected()
@@ -557,11 +496,10 @@ class ApplicationModel:
 class Application:
     def __init__(self, variant: ApplicationVariant, common: EduVPN) -> None:
         self.variant = variant
-        self.nm_manager = nm.NMManager(variant)
         self.common = common
         directory = variant.config_prefix
         self.config = Configuration.load(directory)
-        self.model = ApplicationModel(common, self.config, variant, self.nm_manager)
+        self.model = ApplicationModel(common, self.config, variant)
 
         def signal_handler(_signal, _frame):
             if self.model.is_oauth_started():
@@ -589,19 +527,5 @@ class Application:
         except Exception:
             return
 
-    def initialize_network(self, needs_update=True) -> None:
-        """
-        Determine the current network state.
-        """
-        # Check if a previous network configuration exists.
-        uuid = self.nm_manager.existing_connection
-        if uuid:
-            self.on_network_update_callback(
-                self.nm_manager.connection_state, needs_update
-            )
-
-        @run_in_background_thread("on-network-update")
-        def update(state):
-            self.on_network_update_callback(state, False)
-
-        self.nm_manager.subscribe_to_status_changes(update)
+    def initialize_network(self, _=True) -> None:
+        return

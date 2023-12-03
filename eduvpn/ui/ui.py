@@ -278,25 +278,6 @@ class EduVpnGtkWindow(Gtk.ApplicationWindow):
         self.connection_switch_state: Optional[bool] = None
 
     def initialize(self) -> None:
-        if not self.app.nm_manager.available:
-            show_error_dialog(
-                self,
-                _("Error"),
-                _("NetworkManager not available"),
-                _(
-                    "The application will not be able to configure the network. Please install and set up NetworkManager."
-                ),
-            )
-        elif not self.app.nm_manager.managed:
-            show_error_dialog(
-                self,
-                _("Error"),
-                _("NetworkManager not managing device"),
-                _(
-                    "The application will not be able to configure the network. NetworkManager is installed but no device of the primary connection is currently managed by it."
-                ),
-            )
-
         @run_in_background_thread("register")
         def register():
             try:
@@ -1186,9 +1167,6 @@ For detailed information, see the log file located at:
                 self.connection_info_ipv6address.set_text(ipv6)
 
             update_ui()
-
-        if not self.connection_info_stats:
-            self.connection_info_stats = NetworkStats(self.app.nm_manager)
 
         if not self.connection_info_thread_cancel:
             # Run every second in the background

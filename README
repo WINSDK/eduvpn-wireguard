@@ -1,0 +1,13 @@
+---- Installation ----
+$ pip3 uninstall eduvpn-client eduvpn-common --break-system-packages
+$ install wireguard (should already be installed)
+$ pip3 install -e . --break-system-packages
+
+---- Generating config (must be done every ~2 weeks) ----
+
+$ eduvpn-gui | sudo tee /etc/wireguard/uva.conf
+
+---- How to use ----
+
+Start: $ sudo wg-quick up uva
+Stop:  $ sudo wg-quick down uva
